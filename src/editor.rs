@@ -1,3 +1,5 @@
+use crate::Document;
+use crate::Row;
 use crate::{terminal::CursorState, Terminal};
 use termion::event::Key;
 
@@ -7,6 +9,7 @@ pub enum EditorMode {
     Insert,
 }
 
+#[derive(Default)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -17,6 +20,7 @@ pub struct Editor {
     terminal: Terminal,
     cursor_position: Position,
     pub mode: EditorMode,
+    document: Document,
 }
 
 fn die(e: &std::io::Error) {
@@ -47,8 +51,9 @@ impl Editor {
         Self {
             should_quit: false,
             terminal: Terminal::default().expect("Failed to initialize terminal."),
-            cursor_position: Position { x: 0, y: 0 },
+            cursor_position: Position::default(),
             mode: EditorMode::Visual,
+            document: Document::open(),
         }
     }
 
@@ -63,6 +68,13 @@ impl Editor {
             EditorMode::Insert => Terminal::set_cursor_state(CursorState::Bar),
             EditorMode::Visual => Terminal::set_cursor_state(CursorState::Block),
         }
+    }
+
+    pub fn draw_row(&self, row: &Row) {
+        let start = 0;
+        let end = self.terminal.size().width as usize;
+        let row = row.render(start, end);
+        println!("{}\r", row)
     }
 
     fn process_keypress(&mut self) -> Result<(), std::io::Error> {
@@ -108,7 +120,7 @@ impl Editor {
         // print!("\x1b[2J"); https://vt100.net/docs/vt100-ug/chapter3.html#ED | Erase in display \x1b-ESC [2J - clear all
         // Terminal::clear_screen(); // same as above
         Terminal::set_cursor_state(CursorState::Hidden);
-        Terminal::cursor_position(&Position { x: 0, y: 0 });
+        Terminal::cursor_position(&Position::default());
         if self.should_quit {
             Terminal::clear_screen(); // same as above
             println!("Goodbye.\r");
@@ -138,14 +150,18 @@ impl Editor {
 
     fn draw_rows(&self) {
         let height = self.terminal.size().height;
-        for row in 0..height - 1 {
+        for terminal_row in 0..height - 1 {
             Terminal::clear_line();
-            if row == height / 3 {
-                Terminal::clear_line();
+            if let Some(row) = self.document.row(terminal_row as usize) {
+                self.draw_row(row);
+            } else if terminal_row / 3 == height {
                 self.draw_welcome_message();
             } else {
-                println!("{}   {}~\r", row, termion::color::Fg(termion::color::Red));
-                // println!("{}~\r", row);
+                println!(
+                    "{}   {}~\r",
+                    terminal_row,
+                    termion::color::Fg(termion::color::Red)
+                );
             }
         }
     }
